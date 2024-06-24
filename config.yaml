@@ -1,0 +1,4 @@
+server: localhost
+username: sa
+password: *****
+database: ********
