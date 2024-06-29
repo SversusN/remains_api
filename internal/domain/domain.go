@@ -18,3 +18,7 @@ type RemainRequest struct {
 	Producer  string `json:"producer" db:"producer"`
 	MNN       string `json:"mnn" db:"mnn"`
 }
+type LoginStruct struct {
+	Login    string `json:"login" db:"login"`
+	Password string `json:"password" db:"password"`
+}
