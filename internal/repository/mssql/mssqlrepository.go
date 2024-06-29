@@ -1,10 +1,14 @@
 package mssqlstorage
 
 import (
+	"crypto/md5"
+	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	_ "github.com/denisenkom/go-mssqldb"
 	"github.com/jmoiron/sqlx"
+	"golang.org/x/text/encoding/unicode"
 	"log"
 	"remains_api/config"
 	"remains_api/internal/domain"
@@ -54,7 +58,7 @@ func (s *Server) getConnection() {
 	log.Println("Ping successful")
 }
 
-func (s *Server) GetAll() ([]domain.Remains, error) {
+func (s *Server) GetAll(userid string) ([]domain.Remains, error) {
 	res := make([]domain.Remains, 0)
 	query := `select 
 					goods_name = g.NAME,
@@ -63,9 +67,9 @@ func (s *Server) GetAll() ([]domain.Remains, error) {
 					mnn = s.NAME,
 					price = l.PRICE_SAL,
 					contractor = con.NAME,
-					store = s.NAME,
+					store = st.NAME,
 					series = isnull(se.SERIES_NUMBER, 'Нет серии'),
-					best_before = isnull(cast(se.BEST_BEFORE as varchar(10)),'нет с.г.'),
+					best_before = isnull(CONVERT(NVARCHAR,se.BEST_BEFORE,101),'нет с.г.'),
 					remain = l.QUANTITY_REM
 					from lot (nolock)l
 					inner join goods g (nolock) on g.id_goods = l.ID_GOODS
@@ -75,8 +79,10 @@ func (s *Server) GetAll() ([]domain.Remains, error) {
 					inner join store st(nolock) on st.id_store = l.id_store
 					inner join CONTRACTOR(nolock) con on con.ID_CONTRACTOR = st.ID_CONTRACTOR
 					left join series(nolock)se on se.ID_SERIES = l.ID_SERIES
-					where l.QUANTITY_REM - l.QUANTITY_RES >0`
-	err := s.db.Select(&res, query)
+					where l.QUANTITY_REM - l.QUANTITY_RES >0 and exists
+					(select top 1 1 from user_2_contractor where id_user = @userId 
+					                                         and contractor_id = st.id_contractor)`
+	err := s.db.Select(&res, query, sql.Named("userId", userid))
 	if err != nil {
 		log.Println("failed to select: ", err.Error())
 	}
@@ -96,7 +102,7 @@ func (s *Server) GetFiltered(params domain.RemainRequest) ([]domain.Remains, err
 					mnn = s.NAME,
 					price = l.PRICE_SAL,
 					contractor = con.NAME,
-					store = s.NAME,
+					store = st.NAME,
 					series = isnull(se.SERIES_NUMBER, 'Нет серии'),
 					best_before = isnull(cast(se.BEST_BEFORE as varchar(10)),'нет с.г.'),
 					remain = l.QUANTITY_REM
@@ -159,7 +165,7 @@ func (s *Server) GetOnlyGroup(group string, params domain.RemainRequest) ([]doma
 					mnn = s.NAME,
 					price = l.PRICE_SAL,
 					contractor = con.NAME,
-					store = s.NAME,
+					store = st.NAME,
 					series = isnull(se.SERIES_NUMBER, 'Нет серии'),
 					best_before = isnull(cast(se.BEST_BEFORE as varchar(10)),'нет с.г.'),
 					remain = l.QUANTITY_REM
@@ -191,4 +197,28 @@ func (s *Server) GetOnlyGroup(group string, params domain.RemainRequest) ([]doma
 	}
 	defer rows.Close()
 	return res, nil
+}
+
+func (s Server) LoginUser(loginStruct domain.LoginStruct) (IDUser string, err error) {
+	passwordhash := hashSum(loginStruct.Login, loginStruct.Password)
+	userID := ""
+	query := `SELECT TOP 1 id_user = isnull(cast(id_user as varchar(36)),'0')  FROM META_USER
+	WHERE 1=1
+	and password_hash = @password`
+	e := s.db.QueryRow(query, sql.Named("password", passwordhash)).Scan(&userID)
+	if e != nil {
+		return "", errors.New("bad login:pas")
+	} else {
+		return userID, nil
+	}
+}
+
+func hashSum(login string, password string) string {
+	s := fmt.Sprint(login, password)
+	encoder := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder()
+	s1, _ := encoder.String(s)
+	buff := []byte(s1)
+	sum := md5.Sum(buff)
+	hash := base64.StdEncoding.EncodeToString(sum[:])
+	return hash
 }

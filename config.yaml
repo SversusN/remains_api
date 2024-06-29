@@ -1,4 +1,5 @@
 server: localhost
 username: sa
-password: *****
-database: ********
+password: 798246
+database: F3TAIL_PRIDEA6_123
+port: :80

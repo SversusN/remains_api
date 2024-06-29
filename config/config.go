@@ -17,6 +17,7 @@ type Config struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 	Database string `yaml:"database"`
+	Port     string `yaml:"port"`
 }
 
 // InitConfig initializes the AppConfig
